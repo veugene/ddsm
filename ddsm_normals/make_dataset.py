@@ -1,3 +1,4 @@
+import argparse
 import csv
 import os
 from subprocess import call
@@ -8,6 +9,19 @@ from PIL import Image, ImageDraw
 
 # hack because PIL doesn't like uint16
 Image._fromarray_typemap[((1, 1), "<u2")] = ("I", "I;16")
+
+
+####################################################
+# Process arguments
+####################################################
+def parse_args():
+    parser = argparse.ArgumentParser(description=""
+                "Make a tiff dataset from DDSM raws of normal cases.")
+    parser.add_argument('read_from', type=str)
+    parser.add_argument('write_to', type=str)
+    parser.add_argument('--resize', type=int, default=None)
+    args = parser.parse_args()
+    return args
 
 
 ####################################################
@@ -293,3 +307,10 @@ def make_data_set(read_from, write_to, resize=None):
             print("Converted {}".format(save_path))
 
     outfile.close()
+
+
+if __name__=='__main__':
+    args = parse_args()
+    make_data_set(read_from=args.read_from,
+                  write_to=args.write_to,
+                  resize=args.resize)
