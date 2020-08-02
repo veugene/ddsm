@@ -192,9 +192,10 @@ class ddsm_normal_case_image(object):
         :return: optical density image
         """
         im_od = np.zeros_like(im, dtype=np.float64)
-
+        MAXVAL = 2**16-1
         if (self.scan_institution == 'MGH') and (self.scanner_type == 'DBA'):
-            im_od = (np.log10(im + 1) - 4.80662) / -1.07553  # add 1 to keep from log(0)
+            im_clip = np.clip(im,0,MAXVAL-1)+1 # add 1 to keep from log(0)
+            im_od = (np.log10(im_clip) - 4.80662) / -1.07553
         elif (self.scan_institution == 'MGH') and (self.scanner_type == 'HOWTEK'):
             im_od = (-0.00094568 * im) + 3.789
         elif (self.scan_institution == 'WFU') and (self.scanner_type == 'LUMISYS'):
