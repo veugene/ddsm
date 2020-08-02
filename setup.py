@@ -4,13 +4,13 @@ except ImportError:
     from distutils.core import setup
 
     config = {
-        'description': 'Tools for processing ddsm',
-        'author': 'Francisco Gimenez',
+        'description': 'Convert DDSM normal cases from raw to tiff',
+        'author': 'Francisco Gimenez, Eugene Vorontsov',
         'url': 'https://github.com/fjeg/ddsm_tools',
-        'author_email': 'fgimenez@stanford.edu',
+        'author_email': 'fgimenez@stanford.edu, eugene.vorontsov@gmail.com',
         'version': '0.1',
-        'packages': ['ddsm_tools'],
-        'name': 'ddsm_tools'
+        'packages': ['ddsm_normals'],
+        'name': 'ddsm_normals'
     }
 
 setup(**config)
