@@ -59,8 +59,8 @@ def get_value(lst, row_name, idx):
             try:
                 val = l[idx]
             except Exception:
-                print row_name, idx
-                print lst
+                print(row_name, idx)
+                print(lst)
                 val = None
             break
     return val
@@ -89,14 +89,15 @@ def get_ics_info(ics_file_path):
 
     # get data from ics file
     with open(ics_file_path, 'r') as f:
-        lines = map(lambda s: s.strip().split(), f.readlines())
+        lines = list(map(lambda s: s.strip().split(), f.readlines()))
 
     # map ics data to values
     ics_dict = {
         'patient_id': get_value(lines, 'filename', 1),
         'age': get_value(lines, 'PATIENT_AGE', 1),
         'scanner_type': get_value(lines, 'DIGITIZER', 1),
-        'scan_institution': scanner_map[(letter, get_value(lines, 'DIGITIZER', 1))],
+        'scan_institution': scanner_map[(letter, get_value(lines,
+                                                           'DIGITIZER', 1))],
         'density': get_value(lines, 'DENSITY', 1)
     }
 
@@ -223,7 +224,7 @@ class ddsm_normal_case_image(object):
         :return: path of the image
         """
         # construct image path
-        out_name = os.path.split(self.path).replace(".LJPEG", ".tif")
+        out_name = os.path.split(self.path)[1].replace(".LJPEG", ".tif")
         im_path = os.path.join(out_dir, out_name)
 
         # don't write if image exists and we aren't forcing it
@@ -250,7 +251,7 @@ class ddsm_normal_case_image(object):
 
         # resize if necessary
         if resize:
-            im = im.resize(resize, resample=Image.LINEAR)
+            im = im.resize((resize, resize), resample=Image.LINEAR)
 
         # save image
         im.save(im_path, 'tiff')
@@ -263,6 +264,8 @@ class ddsm_normal_case_image(object):
 # Create the dataset (read, convert, save)
 ####################################################
 def make_data_set(read_from, write_to, resize=None):
+    if not os.path.exists(write_to):
+        os.makedirs(write_to)
     outfile = open(os.path.join(write_to, 'ddsm_normal_cases.csv'), 'w')
     outfile_writer = csv.writer(outfile, delimiter=',')
     outfile_writer.writerow(fields)
@@ -275,9 +278,9 @@ def make_data_set(read_from, write_to, resize=None):
         ics_file_path = None
         for f in files:
             if f.endswith('.LJPEG'):
-                raw_image_files.append(os.path.join(root, curdir, f))
+                raw_image_files.append(os.path.join(read_from, curdir, f))
             elif f.endswith('.ics'):
-                ics_file_path = os.path.join(root, curdir, f)
+                ics_file_path = os.path.join(read_from, curdir, f)
         if not ics_file_path:
             continue
         
@@ -300,10 +303,10 @@ def make_data_set(read_from, write_to, resize=None):
                 print("Error with case {}".format(case.path))
             try:
                 outfile_writer.writerow(
-                    [getattr(abnormality, f) for f in fields])
+                    [getattr(case, f) for f in fields])
             except AttributeError:
-                print("Abnormality {} has no od image"
-                        "".format(abnormality.path))
+                print("Case {} has no od image"
+                        "".format(case.path))
             print("Converted {}".format(save_path))
 
     outfile.close()
