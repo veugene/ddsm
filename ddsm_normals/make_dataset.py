@@ -161,7 +161,6 @@ class ddsm_normal_case_image(object):
             else:
                 call_lst = ['./jpegdir/jpeg', '-d', '-s', self.path]
                 call(call_lst, stdout=log_file)
-        print("Decompressed {}".format(self.path))
 
     def _read_raw_image(self, force=False):
         """
@@ -214,7 +213,7 @@ class ddsm_normal_case_image(object):
                    od_correct=False,
                    make_dtype=None,
                    resize=None,
-                   force=False):
+                   force=True):
         """
         save the image data as a tiff file (without correction)
         :param out_dir: directory to put this image
@@ -224,6 +223,8 @@ class ddsm_normal_case_image(object):
         :param force: force if this image already exists
         :return: path of the image
         """
+        if not os.path.exists(out_dir):
+            os.makedirs(out_dir)
         # construct image path
         out_name = os.path.split(self.path)[1].replace(".LJPEG", ".tif")
         im_path = os.path.join(out_dir, out_name)
@@ -272,45 +273,47 @@ def make_data_set(read_from, write_to, resize=None):
     outfile_writer.writerow(fields)
 
     # Walk through image files; load and convert normal cases.
-    count = 0
+    count_success = 0
+    count_failure = 0
     for curdir, dirs, files in os.walk(read_from):
+        rel_curdir = os.path.relpath(curdir, read_from)
         # Per case, collect all raw image files and the ics file.
-        raw_image_files = []
-        ics_file_path = None
+        raw_image_filenames = []
+        ics_filename = None
         for f in files:
             if f.endswith('.LJPEG'):
-                raw_image_files.append(os.path.join(read_from, curdir, f))
+                raw_image_filenames.append(f)
             elif f.endswith('.ics'):
-                ics_file_path = os.path.join(read_from, curdir, f)
-        if not ics_file_path:
+                ics_filename = f
+        if not ics_filename:
             continue
         
         # Read ics info.
-        ics_dict = get_ics_info(ics_file_path)
+        ics_path = os.path.join(read_from, rel_curdir, ics_filename)
+        ics_dict = get_ics_info(ics_path)
         
         # Convert each raw file.
-        for filename in raw_image_files:
-            case = ddsm_normal_case_image(
-                os.path.join(read_from, curdir, filename),
-                ics_dict)
-            dir_write_to = os.path.join(write_to, curdir)
+        for filename in raw_image_filenames:
+            path = os.path.join(read_from, rel_curdir, filename)
+            rel_path = os.path.join(rel_curdir, filename)
+            case = ddsm_normal_case_image(path, ics_dict)
+            dir_write_to = os.path.join(write_to, rel_curdir)
             try:
                 # uint8 optical density
                 save_path = case.save_image(out_dir=dir_write_to,
                                             od_correct=True,
                                             resize=resize)
                 case.od_img_path = save_path    # to save in csv
-            except ValueError:
-                print("Error with case {}".format(case.path))
-            try:
-                outfile_writer.writerow(
-                    [getattr(case, f) for f in fields])
-            except AttributeError:
-                print("Case {} has no od image"
-                        "".format(case.path))
-            print("Converted {}".format(save_path))
+                outfile_writer.writerow([getattr(case, f) for f in fields])
+            except Exception as e:
+                print("Error with case {} : {}".format(rel_path, e))
+                count_failure += 1
+            print("Converted {}".format(rel_path))
+            count_success += 1
 
     outfile.close()
+    
+    print("SUCCESS: {}, FAILURE: {}".format(count_success, count_failure))
 
 
 if __name__=='__main__':
