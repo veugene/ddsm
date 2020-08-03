@@ -17,9 +17,15 @@ Image._fromarray_typemap[((1, 1), "<u2")] = ("I", "I;16")
 def parse_args():
     parser = argparse.ArgumentParser(description=""
                 "Make a tiff dataset from DDSM raws of normal cases.")
-    parser.add_argument('read_from', type=str)
-    parser.add_argument('write_to', type=str)
-    parser.add_argument('--resize', type=int, default=None)
+    parser.add_argument('read_from', type=str,
+                        help="the path to the DDSM normals directory")
+    parser.add_argument('write_to', type=str,
+                        help="the destination directory for the converted "
+                             "(tiff) files")
+    parser.add_argument('--resize', type=int, default=None,
+                        help="resize images to a square of this size")
+    parser.add_argument('--force', action='store_true',
+                        help="force overwrite of existing files")
     args = parser.parse_args()
     return args
 
@@ -175,14 +181,16 @@ class ddsm_normal_case_image(object):
             return
 
         # make sure decompressed image exists
-        raw_im_path = "{}.1".format(self.path)
-        if not os.path.exists(raw_im_path):
-            self._decompress_ljpeg()
+        self._decompress_ljpeg()
 
         # read it in and make it correct
+        raw_im_path = "{}.1".format(self.path)
         im = np.fromfile(raw_im_path, dtype=np.uint16)
         im.shape = (self.height, self.width)
         self._raw_image = im.byteswap()  # switch endian
+        
+        # clean up : delete decompressed ljpeg
+        os.remove("{}.1".format(self.path))
 
     def _od_correct(self, im):
         """
@@ -213,7 +221,7 @@ class ddsm_normal_case_image(object):
                    od_correct=False,
                    make_dtype=None,
                    resize=None,
-                   force=True):
+                   force=False):
         """
         save the image data as a tiff file (without correction)
         :param out_dir: directory to put this image
@@ -265,7 +273,7 @@ class ddsm_normal_case_image(object):
 ####################################################
 # Create the dataset (read, convert, save)
 ####################################################
-def make_data_set(read_from, write_to, resize=None):
+def make_data_set(read_from, write_to, resize=None, force=False):
     if not os.path.exists(write_to):
         os.makedirs(write_to)
     outfile = open(os.path.join(write_to, 'ddsm_normal_cases.csv'), 'w')
@@ -302,14 +310,15 @@ def make_data_set(read_from, write_to, resize=None):
                 # uint8 optical density
                 save_path = case.save_image(out_dir=dir_write_to,
                                             od_correct=True,
-                                            resize=resize)
+                                            resize=resize,
+                                            force=force)
                 case.od_img_path = save_path    # to save in csv
                 outfile_writer.writerow([getattr(case, f) for f in fields])
+                count_success += 1
             except Exception as e:
-                print("Error with case {} : {}".format(rel_path, e))
                 count_failure += 1
+                print("Error with case {} : {}".format(rel_path, e))
             print("Converted {}".format(rel_path))
-            count_success += 1
 
     outfile.close()
     
@@ -320,4 +329,5 @@ if __name__=='__main__':
     args = parse_args()
     make_data_set(read_from=args.read_from,
                   write_to=args.write_to,
-                  resize=args.resize)
+                  resize=args.resize,
+                  force=args.force)
