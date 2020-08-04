@@ -315,6 +315,7 @@ def make_data_set(read_from, write_to, resize=None, force=False):
         
         # Convert each raw file.
         for filename in raw_image_filenames:
+            print("Converting {} ... ".format(rel_path), end="")
             path = os.path.join(read_from, rel_curdir, filename)
             rel_path = os.path.join(rel_curdir, filename)
             case = ddsm_normal_case_image(path, ics_dict)
@@ -328,10 +329,10 @@ def make_data_set(read_from, write_to, resize=None, force=False):
                 case.od_img_path = save_path    # to save in csv
                 outfile_writer.writerow([getattr(case, f) for f in fields])
                 count_success += 1
+                print("done")
             except Exception as e:
                 count_failure += 1
-                print("Error with case {} : {}".format(rel_path, e))
-            print("Converted {}".format(rel_path))
+                print("error : {}".format(rel_path, e))
 
     outfile.close()
     
