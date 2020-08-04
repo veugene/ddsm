@@ -275,7 +275,7 @@ class ddsm_normal_case_image(object):
                                im.GetPixelID())
 
         # save image (make this atomic in case of interruption)
-        tmp = tempfile.NamedTemporaryFile(delete=True,  # Delete on close()
+        tmp = tempfile.NamedTemporaryFile(delete=False,
                                           dir=out_dir,
                                           suffix='.tif')
         tmp_path = os.path.join(out_dir, tmp.name)
