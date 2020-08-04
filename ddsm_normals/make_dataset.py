@@ -1,6 +1,9 @@
 import argparse
 import csv
+import ctypes
+from functools import partial
 import os
+import multiprocessing
 from subprocess import call
 import tempfile
 
@@ -289,16 +292,11 @@ class ddsm_normal_case_image(object):
 def make_data_set(read_from, write_to, resize=None, force=False):
     if not os.path.exists(write_to):
         os.makedirs(write_to)
-    outfile = open(os.path.join(write_to, 'ddsm_normal_cases.csv'), 'w')
-    outfile_writer = csv.writer(outfile, delimiter=',')
-    outfile_writer.writerow(fields)
-
-    # Walk through image files; load and convert normal cases.
-    count_success = 0
-    count_failure = 0
+    
+    # Walk through image directory tree; load ics files and note down
+    # all image paths for later multiprocessing.
+    image_list = []     # tuples of (image_path, ics_dict)
     for curdir, dirs, files in os.walk(read_from):
-        rel_curdir = os.path.relpath(curdir, read_from)
-        # Per case, collect all raw image files and the ics file.
         raw_image_filenames = []
         ics_filename = None
         for f in files:
@@ -310,33 +308,62 @@ def make_data_set(read_from, write_to, resize=None, force=False):
             continue
         
         # Read ics info.
-        ics_path = os.path.join(read_from, rel_curdir, ics_filename)
+        ics_path = os.path.join(curdir, ics_filename)
         ics_dict = get_ics_info(ics_path)
         
-        # Convert each raw file.
-        for filename in raw_image_filenames:
-            print("Converting {} ... ".format(rel_path), end="")
-            path = os.path.join(read_from, rel_curdir, filename)
-            rel_path = os.path.join(rel_curdir, filename)
-            case = ddsm_normal_case_image(path, ics_dict)
-            dir_write_to = os.path.join(write_to, rel_curdir)
-            try:
-                # uint8 optical density
-                save_path = case.save_image(out_dir=dir_write_to,
-                                            od_correct=True,
-                                            resize=resize,
-                                            force=force)
-                case.od_img_path = save_path    # to save in csv
-                outfile_writer.writerow([getattr(case, f) for f in fields])
-                count_success += 1
-                print("done")
-            except Exception as e:
-                count_failure += 1
-                print("error : {}".format(rel_path, e))
-
+        # Record paths.
+        image_list.extend([(os.path.join(curdir, fn), ics_dict)
+                           for fn in raw_image_filenames])
+    
+    # Use multiprocessing to convert images.
+    args = (read_from, write_to, resize, force)
+    with multiprocessing.Pool() as pool:
+        log = pool.map(partial(convert_image,
+                               read_from=read_from,
+                               write_to=write_to,
+                               resize=resize,
+                               force=force),
+                       image_list)
+    
+    # Parse results. Record output in csv file.
+    outfile = open(os.path.join(write_to, 'ddsm_normal_cases.csv'), 'w')
+    outfile_writer = csv.writer(outfile, delimiter=',')
+    outfile_writer.writerow(fields)
+    count_success = 0
+    count_failure = 0
+    for result in log:
+        if result[0]==0:
+            count_success += 1
+            outfile_writer.writerow(result[1])
+        else:
+            count_failure += 1
     outfile.close()
     
+    # Report on the number of successes and failures.
     print("SUCCESS: {}, FAILURE: {}".format(count_success, count_failure))
+
+
+####################################################
+# Convert a raw image to a tif (and save)
+####################################################
+def convert_image(image_tuple, read_from, write_to, resize, force):
+    path, ics_dict = image_tuple
+    rel_path = os.path.relpath(path, read_from)
+    case = ddsm_normal_case_image(path, ics_dict)
+    dir_write_to = os.path.dirname(path)
+    print("Converting {} ... ".format(rel_path), end="")
+    try:
+        # uint8 optical density
+        save_path = case.save_image(out_dir=dir_write_to,
+                                    od_correct=True,
+                                    resize=resize,
+                                    force=force)
+        case.od_img_path = save_path    # to save in csv
+        print("done")
+        return (0, [getattr(case, f) for f in fields])
+    except Exception as e:
+        print("error : {}".format(rel_path, e))
+    return (1, None)
 
 
 if __name__=='__main__':
