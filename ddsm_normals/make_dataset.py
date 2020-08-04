@@ -350,7 +350,7 @@ def convert_image(image_tuple, read_from, write_to, resize, force):
     path, ics_dict = image_tuple
     rel_path = os.path.relpath(path, read_from)
     case = ddsm_normal_case_image(path, ics_dict)
-    dir_write_to = os.path.dirname(path)
+    dir_write_to = os.path.join(write_to, os.path.dirname(rel_path))
     print("Converting {} ... ".format(rel_path), end="")
     try:
         # uint8 optical density
@@ -362,7 +362,7 @@ def convert_image(image_tuple, read_from, write_to, resize, force):
         print("done")
         return (0, [getattr(case, f) for f in fields])
     except Exception as e:
-        print("error : {}".format(rel_path, e))
+        print("error : {}".format(e))
     return (1, None)
 
 
