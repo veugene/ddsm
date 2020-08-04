@@ -2,6 +2,7 @@ import argparse
 import csv
 import os
 from subprocess import call
+import tempfile
 
 from numpy import array, savetxt
 import numpy as np
@@ -270,8 +271,13 @@ class ddsm_normal_case_image(object):
                                0,
                                im.GetPixelID())
 
-        # save image
-        sitk.WriteImage(im, im_path)
+        # save image (make this atomic in case of interruption)
+        tmp = tempfile.NamedTemporaryFile(delete=True,  # Delete on close()
+                                          dir=out_dir,
+                                          suffix='.tif')
+        tmp_path = os.path.join(out_dir, tmp.name)
+        sitk.WriteImage(im, tmp_path, True)  # True for useCompression
+        os.rename(tmp_path, im_path)         # Atomic move
 
         # return location of image
         return im_path
