@@ -5,10 +5,7 @@ from subprocess import call
 
 from numpy import array, savetxt
 import numpy as np
-from PIL import Image, ImageDraw
-
-# hack because PIL doesn't like uint16
-Image._fromarray_typemap[((1, 1), "<u2")] = ("I", "I;16")
+import SimpleITK as sitk
 
 
 ####################################################
@@ -257,14 +254,22 @@ class ddsm_normal_case_image(object):
             pass
 
         # create image object
-        im = Image.fromarray(im_array)
+        im = sitk.GetImageFromArray(im_array)
 
         # resize if necessary
         if resize:
-            im = im.resize((resize, resize), resample=Image.LINEAR)
+            im = sitk.Resample(im,
+                               (resize, resize),
+                               sitk.Transform(),
+                               sitk.sitkLinear,
+                               im.GetOrigin(),
+                               im.GetSpacing(),
+                               im.GetDirection(),
+                               0,
+                               im.GetPixelID())
 
         # save image
-        im.save(im_path, 'tiff')
+        sitk.WriteImage(im, im_path)
 
         # return location of image
         return im_path
