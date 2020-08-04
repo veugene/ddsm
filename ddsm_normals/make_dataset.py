@@ -162,7 +162,9 @@ class ddsm_normal_case_image(object):
                 log_file.write("Decompressed LJPEG Exists: {}"
                                "".format(self.path))
             else:
-                call_lst = ['./jpegdir/jpeg', '-d', '-s', self.path]
+                # Assume jpeg binary is in PATH
+                # TODO: install jpeg to a binary directory with setup.py
+                call_lst = ['jpeg', '-d', '-s', self.path]
                 call(call_lst, stdout=log_file)
 
     def _read_raw_image(self, force=False):
