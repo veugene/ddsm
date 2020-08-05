@@ -162,14 +162,10 @@ class ddsm_normal_case_image(object):
         :return: None
         """
         with open(log_file_path, 'a') as log_file:
-            if os.path.exists("{}.1".format(self.path)):
-                log_file.write("Decompressed LJPEG Exists: {}"
-                               "".format(self.path))
-            else:
-                # Assume jpeg binary is in PATH
-                # TODO: install jpeg to a binary directory with setup.py
-                call_lst = ['jpeg', '-d', '-s', self.path]
-                call(call_lst, stdout=log_file)
+            # Assume jpeg binary is in PATH
+            # TODO: install jpeg to a binary directory with setup.py
+            call_lst = ['jpeg', '-d', '-s', self.path]
+            call(call_lst, stdout=log_file)
 
     def _read_raw_image(self, force=False):
         """
