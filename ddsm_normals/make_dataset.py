@@ -179,17 +179,18 @@ class ddsm_normal_case_image(object):
         if (self._raw_image is not None) and not force:
             return
 
-        # make sure decompressed image exists
-        self._decompress_ljpeg()
+        try:
+            # make sure decompressed image exists
+            self._decompress_ljpeg()
 
-        # read it in and make it correct
-        raw_im_path = "{}.1".format(self.path)
-        im = np.fromfile(raw_im_path, dtype=np.uint16)
-        im.shape = (self.height, self.width)
-        self._raw_image = im.byteswap()  # switch endian
-        
-        # clean up : delete decompressed ljpeg
-        os.remove("{}.1".format(self.path))
+            # read it in and make it correct
+            raw_im_path = "{}.1".format(self.path)
+            im = np.fromfile(raw_im_path, dtype=np.uint16)
+            im.shape = (self.height, self.width)
+            self._raw_image = im.byteswap()  # switch endian
+        finally:
+            # clean up : delete decompressed ljpeg
+            os.remove("{}.1".format(self.path))
 
     def _od_correct(self, im):
         """
