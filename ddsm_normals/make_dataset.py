@@ -253,9 +253,9 @@ class ddsm_normal_case_image(object):
 
         # convert to optical density
         if od_correct:
-            im_array = np.interp(im_array, (0.0, 4.0), (255, 0))
-            im_array = im_array.astype(np.uint8)
             im_array = self._od_correct(im_array, clip_noise=clip_noise)
+            im_array = np.interp(im_array, (0.0, 4.0), (65535, 0))
+            im_array = im_array.astype(np.uint16)
 
         # create image object
         im = sitk.GetImageFromArray(im_array)
