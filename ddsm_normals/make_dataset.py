@@ -219,6 +219,7 @@ class ddsm_normal_case_image(object):
         # perform heath noise correction
         if clip_noise:
             im_od = np.clip(im_od, 0.05, 3)
+            im_od = (im_od-0.05)*4/(3-0.05) # rescale back into [0, 4]
         return im_od
 
     def save_image(self,
