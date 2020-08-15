@@ -23,6 +23,9 @@ def parse_args():
     parser.add_argument('write_to', type=str,
                         help="the destination directory for the converted "
                              "(tiff) files")
+    parser.add_argument('--clip_noise', type=bool, default=True,
+                        help="clip out low and high values of image after "
+                             "conversion from raw for 'noise reduction'")
     parser.add_argument('--resize', type=int, default=None,
                         help="resize images to a square of this size")
     parser.add_argument('--force', action='store_true',
@@ -192,7 +195,7 @@ class ddsm_normal_case_image(object):
             # clean up : delete decompressed ljpeg
             os.remove("{}.1".format(self.path))
 
-    def _od_correct(self, im):
+    def _od_correct(self, im, clip_noise=True):
         """
         Map gray levels to optical density level
         :param im: image
@@ -209,25 +212,26 @@ class ddsm_normal_case_image(object):
             im_od = (im - 4096.99) / -1009.01
         elif (self.scan_institution == 'ISMD') and (self.scanner_type == 'HOWTEK'):
             im_od = (-0.00099055807612 * im) + 3.96604095240593
-
+        
+        # Clip into [0, 4]
+        im_od = np.clip(im_od, 0, 4)
+        
         # perform heath noise correction
-        im_od[im_od < 0.05] = 0.05
-        im_od[im_od > 3.0] = 3.0
+        if clip_noise:
+            im_od = np.clip(im_od, 0.05, 3)
         return im_od
 
     def save_image(self,
                    out_dir,
-                   out_name=None,
                    od_correct=False,
-                   make_dtype=None,
+                   clip_noise=True,
                    resize=None,
                    force=False):
         """
         save the image data as a tiff file (without correction)
         :param out_dir: directory to put this image
-        :param out_name: name of file to save image as
         :param od_correct: boolean to decide to perform od_correction
-        :param make_dtype: boolean to switch to 8-bit encoding
+        :param clip_noise: boolean for whether to clip out low and high values
         :param force: force if this image already exists
         :return: path of the image
         """
@@ -249,12 +253,9 @@ class ddsm_normal_case_image(object):
 
         # convert to optical density
         if od_correct:
-            im_array = self._od_correct(im_array)
             im_array = np.interp(im_array, (0.0, 4.0), (255, 0))
             im_array = im_array.astype(np.uint8)
-
-        if make_dtype == 'uint8':
-            pass
+            im_array = self._od_correct(im_array, clip_noise=clip_noise)
 
         # create image object
         im = sitk.GetImageFromArray(im_array)
@@ -286,7 +287,8 @@ class ddsm_normal_case_image(object):
 ####################################################
 # Create the dataset (read, convert, save)
 ####################################################
-def make_data_set(read_from, write_to, resize=None, force=False):
+def make_data_set(read_from, write_to,
+                  clip_noise=True, resize=None, force=False):
     if not os.path.exists(write_to):
         os.makedirs(write_to)
     
@@ -318,6 +320,7 @@ def make_data_set(read_from, write_to, resize=None, force=False):
         log = pool.map(partial(convert_image,
                                read_from=read_from,
                                write_to=write_to,
+                               clip_noise=clip_noise,
                                resize=resize,
                                force=force),
                        image_list)
@@ -343,7 +346,7 @@ def make_data_set(read_from, write_to, resize=None, force=False):
 ####################################################
 # Convert a raw image to a tif (and save)
 ####################################################
-def convert_image(image_tuple, read_from, write_to, resize, force):
+def convert_image(image_tuple, read_from, write_to, clip_noise, resize, force):
     path, ics_dict = image_tuple
     rel_path = os.path.relpath(path, read_from)
     case = ddsm_normal_case_image(path, ics_dict)
@@ -353,6 +356,7 @@ def convert_image(image_tuple, read_from, write_to, resize, force):
         # uint8 optical density
         save_path = case.save_image(out_dir=dir_write_to,
                                     od_correct=True,
+                                    clip_noise=clip_noise,
                                     resize=resize,
                                     force=force)
         case.od_img_path = save_path    # to save in csv
@@ -367,5 +371,6 @@ if __name__=='__main__':
     args = parse_args()
     make_data_set(read_from=args.read_from,
                   write_to=args.write_to,
+                  clip_noise=args.clip_noise,
                   resize=args.resize,
                   force=args.force)
