@@ -1,12 +1,15 @@
 # https://github.com/lich0031/AUNet/blob/master/model/AUNet_R16.py
 
+from collections import OrderedDict
+import numpy as np
 import torch
 import torch.nn as nn
+
 from fcn_maker.loss import dice_loss
 
 
 def build_model():
-    model = full_model()
+    model = full_model(colordim=1, n_classes=1)
     return {'G': model}
 
 
@@ -151,9 +154,12 @@ def _mean(x):
 
 
 class full_model(nn.Module):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, colordim=3, n_classes=2, learned_bilinear=False):
         super().__init__()
-        self.model = [AUNet_R16(*args, **kwargs)]
+        self.colordim = colordim
+        self.n_classes = n_classes
+        self.learned_bilinear = learned_bilinear
+        self.model = AUNet_R16(colordim, n_classes, learned_bilinear)
         self.loss_function = dice_loss()
     
     def forward(self, x_A, x_B=None, mask=None, optimizer=None, **kwargs):
@@ -167,10 +173,16 @@ class full_model(nn.Module):
             return self._evaluate(x_A, mask, optimizer=optimizer)
     
     def _evaluate(self, x_A, mask=None, optimizer=None):
-        x_AM = self.model[0](x_AM)
+        out = self.model(x_A)
+        if self.n_classes==1:
+            x_AM = torch.sigmoid(out)
+        else:
+            x_AM = torch.softmax(out)
         loss = 0
+        mask_arr = None
         if mask is not None:
-            loss = _mean(self.loss_function(x_AM, mask))
+            mask_arr = torch.from_numpy(np.array(mask)).cuda()
+            loss = _mean(self.loss_function(x_AM, mask_arr))
         if optimizer is not None:
             loss.mean().backward()
             optimizer.step()
@@ -180,5 +192,5 @@ class full_model(nn.Module):
             ('l_dice',  loss),
             ('x_A',     x_A),
             ('x_AM',    x_AM),
-            ('x_M',     mask)))
+            ('x_M',     mask_arr)))
         return outputs
