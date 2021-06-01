@@ -95,6 +95,8 @@ class scoring_function(object):
         if self.epochs_since_last_save >= self.period:
             self.epochs_since_last_save = 0
             quantity = engine.state.metrics[self.metric_name]
+            if isinstance(quantity, torch.Tensor):
+                quantity = quantity.item()
             # Since we're always trying to minimize things, return
             # the -ve of whatever that is.
             return -quantity
