@@ -125,13 +125,13 @@ def prepare_data_inbreast(args):
         im = resize(im,
                      size=(args.resize, args.resize),
                      interpolator=sitk.sitkLinear)
+        im = np.expand_dims(im, 0)
         g_patient = f.require_group(patient)
         g_s = g_patient.require_group('h')
         g_s.create_dataset(case,
-                           im.shape,
+                           data=im,
                            compression='lzf',
-                           chunks=im.shape,
-                           dtype=im.dtype)
+                           chunks=im.shape)
         g_s.attrs.create('laterality', laterality)
         g_s.attrs.create('view', view)
     
@@ -150,32 +150,32 @@ def prepare_data_inbreast(args):
         im = resize(im,
                     size=(args.resize, args.resize),
                     interpolator=sitk.sitkLinear)
+        im = np.expand_dims(im, 0)
         m = resize(m,
                    size=(args.resize, args.resize),
                    interpolator=sitk.sitkNearestNeighbor)
+        m = np.expand_dims(m, 0)
         g_patient = f.require_group(patient)
         g_s = g_patient.require_group('s')
         g_s.create_dataset(case,
-                           im.shape,
+                           data=im,
                            compression='lzf',
-                           chunks=im.shape,
-                           dtype=im.dtype)
+                           chunks=im.shape)
         g_s.attrs.create('laterality', laterality)
         g_s.attrs.create('view', view)
         g_m = g_patient.require_group('m')
         g_m.create_dataset(case,
-                           m.shape,
+                           data=m,
                            compression='lzf',
-                           chunks=m.shape,
-                           dtype=m.dtype)
+                           chunks=m.shape)
         g_m.attrs.create('laterality', laterality)
         g_m.attrs.create('view', view)
         
         # DEBUG
         from matplotlib import pyplot as plt
         fig, ax = plt.subplots(1, 2)
-        ax[0].imshow(im, cmap='gray')
-        ax[1].imshow(m, cmap='gray')
+        ax[0].imshow(np.squeeze(im), cmap='gray')
+        ax[1].imshow(np.squeeze(m), cmap='gray')
         fig.savefig(os.path.join("debug_inbreast",
                                  os.path.basename(case)+".png"))
         plt.close()
