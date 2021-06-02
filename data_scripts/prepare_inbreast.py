@@ -32,7 +32,6 @@ def get_parser():
                         default='./data/in-breast/inbreast.h5',
                         help="path to save the HDF5 file to")
     parser.add_argument('--resize', type=int, default=256)
-    parser.add_argument('--batch_size', type=int, default=32)
     return parser
 
 
@@ -127,7 +126,7 @@ def prepare_data_inbreast(args):
                      size=(args.resize, args.resize),
                      interpolator=sitk.sitkLinear)
         g_patient = f.require_group(patient)
-        g_s = g_patient.require_group('s')
+        g_s = g_patient.require_group('h')
         g_s.create_dataset(case,
                            im.shape,
                            compression='lzf',
