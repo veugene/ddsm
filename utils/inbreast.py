@@ -84,17 +84,21 @@ def prepare_data_inbreast(path, fold, masked_fraction=0,
     data = OrderedDict([('train', OrderedDict()),
                         ('valid', OrderedDict()),
                         ('test',  OrderedDict())])
-    data['train']['h'] = [x for c in cases_h
+    data['train']['h'] = [f[c]['h'][x] for c in cases_h
                           if c not in split['valid']+split['test']
                           for x in f[c]['h']]
     data['train']['s'] = []
     data['train']['m'] = []
     data['valid']['h'] = data['train']['h']    # HACK
-    data['valid']['s'] = [x for c in split['valid'] for x in f[c]['s']]
-    data['valid']['m'] = [x for c in split['valid'] for x in f[c]['m']]
+    data['valid']['s'] = [f[c]['s'][x] for c in split['valid']
+                          for x in f[c]['s']]
+    data['valid']['m'] = [f[c]['m'][x] for c in split['valid']
+                          for x in f[c]['m']]
     data['test']['h']  = data['train']['h']    # HACK
-    data['test']['s']  = [x for c in split['test'] for x in f[c]['s']]
-    data['test']['m']  = [x for c in split['test'] for x in f[c]['m']]
+    data['test']['s']  = [f[c]['s'][x] for c in split['test']
+                          for x in f[c]['s']]
+    data['test']['m']  = [f[c]['s'][x] for c in split['test']
+                          for x in f[c]['m']]
     for i in range(n_train):
         case = split['train'][i]
         if i in masked_indices:
@@ -105,8 +109,8 @@ def prepare_data_inbreast(path, fold, masked_fraction=0,
             data['train']['m'].append([None]*n_images)
         else:
             # Keep.
-            data['train']['m'].extend([x for x in f[case]['m']])
-        data['train']['s'].extend([x for x in f[case]['s']])
+            data['train']['m'].extend([f[case]['m'][x] for x in f[case]['m']])
+        data['train']['s'].extend([f[case]['s'][x] for x in f[case]['s']])
     
     # Merge all arrays in each list of arrays.
     for key in data.keys():
@@ -114,9 +118,9 @@ def prepare_data_inbreast(path, fold, masked_fraction=0,
         # is greater than the number of healthy. In that case, we should
         # duplicate the healthy set M times so that it has a bigger size
         # than the sick set.
+        m = 1
         len_h = sum([len(elem) for elem in data[key]['h']])
         len_s = sum([len(elem) for elem in data[key]['s']])
-        print("DEBUG", len_h, len_s)
         if len_h < len_s:
             m = int(np.ceil(len_s / len_h))
         data[key]['h'] = multi_source_array(data[key]['h']*m)
