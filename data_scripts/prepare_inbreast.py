@@ -1,7 +1,9 @@
 import argparse
+import csv
 import os
 import re
 
+import h5py
 import numpy as np
 import plistlib
 from scipy import ndimage
@@ -11,8 +13,6 @@ from skimage.morphology import (binary_closing,
                                 binary_opening,
                                 flood)
 from tqdm import tqdm
-
-from data_tools.io import h5py_array_writer
 
 
 def get_parser():
@@ -72,69 +72,71 @@ def prepare_data_inbreast(args):
     if not os.path.exists(target_dir):
         os.makedirs(target_dir)
     
-    writer_kwargs = {'data_element_shape': (args.resize, args.resize),
-                     'batch_size': args.batch_size,
-                     'filename': args.path_create,
-                     'append': True,
-                     'kwargs': {'chunks': (args.batch_size,
-                                           args.resize,
-                                           args.resize)}}
-    writer = {'h': h5py_array_writer(array_name='h',
-                                     dtype=np.uint16,
-                                     **writer_kwargs),
-              's': h5py_array_writer(array_name='s',
-                                     dtype=np.uint16,
-                                     **writer_kwargs),
-              'm': h5py_array_writer(array_name='m',
-                                     dtype=np.uint8,
-                                     **writer_kwargs)}
+    # Identify cases with masses from CSV.
+    cases_with_mass = []
+    with open(os.path.join(args.path_inbreast, "INbreast.csv"), 'r') as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            if row['Mass ']=='X':
+                cases_with_mass.append(row['File Name'])
     
-    # Index sick cases.
-    mask_files = {}
-    mask_dir = os.path.join(args.path_inbreast,"AllXML")
-    for fn in os.listdir(mask_dir):
-        if not fn.endswith(".xml"):
-            continue # skip
-        case_id = re.search("^[0-9]{8}", fn).group(0)
-        if case_id in mask_files:
-            print("DEBUG mask already present for case", case_id)
-        mask_files[case_id] = os.path.join(mask_dir, fn)
-    
-    # Index healthy cases.
+    # Index cases by patient ID.
     image_files = {'h': {}, 's': {}}
-    image_dir = os.path.join(args.path_inbreast, "AllDICOMs")
-    for fn in os.listdir(image_dir):
-        if not fn.endswith("_ANON.dcm"):
+    dicom_dir = os.path.join(args.path_inbreast, "AllDICOMs")
+    for fn in os.listdir(dicom_dir):
+        if not fn.endswith(".dcm"):
             continue # skip
-        case_id = re.search("^[0-9]{8}", fn).group(0)
-        if case_id in image_files['s'] or case_id in image_files['h']:
-            print("DEBUG case already present", case_id)
-        if case_id in mask_files.keys():
-            image_files['s'][case_id] = os.path.join(image_dir, fn)
+        match = re.match(
+            "^([0-9]{8})_([a-z0-9]{16})_MG_(L|R)_(CC|ML|FB)_ANON.dcm$", fn)
+        assert match is not None
+        case, patient, laterality, view = match.groups()
+        if case in cases_with_mass:
+            key = 's'
+            assert os.path.exists(os.path.join(args.path_inbreast,
+                                               "AllXML",
+                                               f"{case}.xml"))
         else:
-            image_files['h'][case_id] = os.path.join(image_dir, fn)
+            key = 'h'
+        image_files[key][case] = (os.path.join(dicom_dir, fn),
+                                  patient,
+                                  laterality,
+                                  view)
+    
+    # Create HDF5 file to save dataset into.
+    f = h5py.File(args.path_create, 'w')
     
     # Load healthy images and save in h5.
     print("Preparing healthy cases")
-    for case_id in tqdm(sorted(image_files['h'].keys())):
-        im_sitk = sitk.ReadImage(image_files['h'][case_id])
+    for case in tqdm(sorted(image_files['h'].keys())):
+        path, patient, laterality, view = image_files['h'][case]
+        im_sitk = sitk.ReadImage(path)
         im = sitk.GetArrayFromImage(im_sitk)
         im = np.squeeze(im)
         im = trim(im)
         im = resize(im,
                      size=(args.resize, args.resize),
                      interpolator=sitk.sitkLinear)
-        writer['h'].buffered_write(im)
-    writer['h'].flush_buffer()
+        g_patient = f.require_group(patient)
+        g_s = g_patient.require_group('s')
+        g_s.create_dataset(case,
+                           im.shape,
+                           compression='lzf',
+                           chunks=im.shape,
+                           dtype=im.dtype)
+        g_s.attrs.create('laterality', laterality)
+        g_s.attrs.create('view', view)
     
     # Load sick images and masks and save in h5.
     print("Preparing sick cases")
-    for case_id in tqdm(sorted(image_files['s'].keys())):
-        im_sitk = sitk.ReadImage(image_files['s'][case_id])
+    for case in tqdm(sorted(image_files['s'].keys())):
+        path, patient, laterality, view = image_files['s'][case]
+        im_sitk = sitk.ReadImage(path)
         im = sitk.GetArrayFromImage(im_sitk)
         shape = im.shape
         im = np.squeeze(im)
-        m = load_inbreast_mask(mask_files[case_id], imshape=im.shape)
+        m = load_inbreast_mask(os.path.join(args.path_inbreast,
+                                            "AllXML", f"{case}.xml"),
+                               imshape=im.shape)
         im, m = trim(im, m)
         im = resize(im,
                     size=(args.resize, args.resize),
@@ -142,20 +144,34 @@ def prepare_data_inbreast(args):
         m = resize(m,
                    size=(args.resize, args.resize),
                    interpolator=sitk.sitkNearestNeighbor)
-        writer['s'].buffered_write(im)
-        writer['m'].buffered_write(m)
+        g_patient = f.require_group(patient)
+        g_s = g_patient.require_group('s')
+        g_s.create_dataset(case,
+                           im.shape,
+                           compression='lzf',
+                           chunks=im.shape,
+                           dtype=im.dtype)
+        g_s.attrs.create('laterality', laterality)
+        g_s.attrs.create('view', view)
+        g_m = g_patient.require_group('m')
+        g_m.create_dataset(case,
+                           m.shape,
+                           compression='lzf',
+                           chunks=m.shape,
+                           dtype=m.dtype)
+        g_m.attrs.create('laterality', laterality)
+        g_m.attrs.create('view', view)
         
+        # DEBUG
         from matplotlib import pyplot as plt
         fig, ax = plt.subplots(1, 2)
         ax[0].imshow(im, cmap='gray')
         ax[1].imshow(m, cmap='gray')
         fig.savefig(os.path.join("debug_inbreast",
-                                 os.path.basename(case_id)+".png"))
+                                 os.path.basename(case)+".png"))
         plt.close()
-        
-    writer['s'].flush_buffer()
-    writer['m'].flush_buffer()
 
+    f.close()
 
 def resize(image, size, interpolator=sitk.sitkLinear):
     sitk_image = sitk.GetImageFromArray(image)
@@ -237,23 +253,10 @@ def trim(image, mask=None):
         crop_row_bot   = max(crop_row_bot,   slice_row.stop)
     
     # Apply crop.
-    #image_orig = image.copy()
     image = image[crop_row_top:crop_row_bot,crop_col_left:crop_col_right]
     if mask is not None:
-        #mask_orig = mask.copy()
         mask = mask[crop_row_top:crop_row_bot,crop_col_left:crop_col_right]
-        
-        #from matplotlib import pyplot as plt
-        #fig, ax = plt.subplots(1, 5)
-        #ax[0].imshow(image_orig, cmap='gray')
-        #ax[1].imshow(mask_orig, cmap='gray')
-        #ax[2].imshow(x_bin, cmap='gray')
-        #ax[3].imshow(image, cmap='gray')
-        #ax[4].imshow(mask, cmap='gray')
-        #plt.show()
-        
         return image, mask
-    
     return image
 
 

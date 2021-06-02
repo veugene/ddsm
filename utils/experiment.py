@@ -53,7 +53,8 @@ class experiment(object):
                          learning_rate=args.learning_rate,
                          opt_kwargs=args.opt_kwargs,
                          weight_decay=args.weight_decay,
-                         model_kwargs=args.model_kwargs)
+                         model_kwargs=args.model_kwargs,
+                         score_function=score_function)
             
         # Does the experiment directory already contain state files?
         state_file_list = natsorted([fn for fn in os.listdir(args.path)
