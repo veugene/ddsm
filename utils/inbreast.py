@@ -67,11 +67,11 @@ def prepare_data_inbreast(path, fold, masked_fraction=0,
     n_train = len(split['train'])
     n_masked = int(min(n_train*masked_fraction+0.5, n_train))
     masked_indices = rng.permutation(n_train)[:n_masked]
-    n_labeled = sum([sum(len(f[c]['s']) for c in split['train'][idx])
-                     for idx in masked_indices])
+    n_unlabeled = sum([sum(len(f[c]['s']) for c in split['train'][idx])
+                      for idx in masked_indices])
     n_total   = sum([len(f[c]['s']) for c in split['train']])
     print("DEBUG: A total of {}/{} images are labeled."
-          "".format(n_labeled, n_total))
+          "".format(n_total-n_unlabeled, n_total))
     
     # Apply masking in one of two ways.
     # 
