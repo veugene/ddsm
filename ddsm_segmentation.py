@@ -34,6 +34,8 @@ def get_parser():
                        help="Save images into tensorboard event files.")
     g_exp.add_argument('--init_seed', type=int, default=1234)
     g_exp.add_argument('--data_seed', type=int, default=0)
+    g_exp.add_argument('--use_cbis_data', action='store_true')  # DEBUG
+    g_exp.add_argument('--use_cbis_png_data', action='store_true')  # DEBUG
     return parser
 
 
@@ -58,7 +60,9 @@ def run(args):
     from data_tools.data_augmentation import image_random_transform
 
     from utils.data import data_flow_sampler
-    from utils.ddsm import (prepare_data_ddsm,
+    from utils.ddsm import (prepare_data_cbis,
+                            prepare_data_cbis_png,
+                            prepare_data_ddsm,
                             preprocessor_ddsm)
     from utils.experiment import experiment
     from utils.metrics import (batchwise_loss_accumulator,
@@ -91,38 +95,60 @@ def run(args):
         da_kwargs=None
     
     # Prepare data.
-    data = prepare_data_ddsm(path=args.data,
-                             masked_fraction=1.-args.labeled_fraction,
-                             drop_masked=args.yield_only_labeled,
-                             rng=np.random.RandomState(args.data_seed))
-    data_train = [data['train']['h'], data['train']['s'], data['train']['m']]
-    data_valid = [data['valid']['h'], data['valid']['s'], data['valid']['m']]
-    data_test  = [data['test']['h'],  data['test']['s'],  data['test']['m']]
-    loader = {
-        'train': data_flow_sampler(data_train,
-                                   sample_random=True,
-                                   batch_size=args.batch_size_train,
-                                   preprocessor=preprocessor_ddsm(
-                                       data_augmentation_kwargs=da_kwargs),
-                                   nb_io_workers=args.nb_io_workers,
-                                   nb_proc_workers=args.nb_proc_workers,
-                                   rng=np.random.RandomState(args.init_seed)),
-        'valid': data_flow_sampler(data_valid,
-                                   sample_random=True,
-                                   batch_size=args.batch_size_valid,
-                                   preprocessor=preprocessor_ddsm(
-                                       data_augmentation_kwargs=None),
-                                   nb_io_workers=args.nb_io_workers,
-                                   nb_proc_workers=args.nb_proc_workers,
-                                   rng=np.random.RandomState(args.init_seed)),
-        'test':  data_flow_sampler(data_test,
-                                   sample_random=True,
-                                   batch_size=args.batch_size_valid,
-                                   preprocessor=preprocessor_ddsm(
-                                       data_augmentation_kwargs=None),
-                                   nb_io_workers=args.nb_io_workers,
-                                   nb_proc_workers=args.nb_proc_workers,
-                                   rng=np.random.RandomState(args.init_seed))}
+    if args.use_cbis_png_data:
+        from torch.utils.data import DataLoader
+        data = prepare_data_cbis_png(args.data,
+                                     da_kwargs)
+        loader = {
+            'train': DataLoader(data['train'],
+                            batch_size=args.batch_size_train,
+                            shuffle=True,
+                            num_workers=args.nb_proc_workers),
+            'valid': DataLoader(data['valid'],
+                            batch_size=args.batch_size_valid,
+                            shuffle=False,
+                            num_workers=args.nb_proc_workers),
+            'test':  DataLoader(data['test'],
+                            batch_size=args.batch_size_valid,
+                            shuffle=False,
+                            num_workers=args.nb_proc_workers)}
+    else:
+        prepare_data = prepare_data_ddsm
+        if args.use_cbis_data:
+            prepare_data = prepare_data_cbis
+        data = prepare_data(
+            path=args.data,
+            masked_fraction=1.-args.labeled_fraction,
+            drop_masked=args.yield_only_labeled,
+            rng=np.random.RandomState(args.data_seed))
+        data_train = [data['train']['h'], data['train']['s'], data['train']['m']]
+        data_valid = [data['valid']['h'], data['valid']['s'], data['valid']['m']]
+        data_test  = [data['test']['h'],  data['test']['s'],  data['test']['m']]
+        loader = {
+            'train': data_flow_sampler(data_train,
+                                    sample_random=True,
+                                    batch_size=args.batch_size_train,
+                                    preprocessor=preprocessor_ddsm(
+                                        data_augmentation_kwargs=da_kwargs),
+                                    nb_io_workers=args.nb_io_workers,
+                                    nb_proc_workers=args.nb_proc_workers,
+                                    rng=np.random.RandomState(args.init_seed)),
+            'valid': data_flow_sampler(data_valid,
+                                    sample_random=True,
+                                    batch_size=args.batch_size_valid,
+                                    preprocessor=preprocessor_ddsm(
+                                        data_augmentation_kwargs=None),
+                                    nb_io_workers=args.nb_io_workers,
+                                    nb_proc_workers=args.nb_proc_workers,
+                                    rng=np.random.RandomState(args.init_seed)),
+            'test':  data_flow_sampler(data_test,
+                                    sample_random=True,
+                                    batch_size=args.batch_size_valid,
+                                    preprocessor=preprocessor_ddsm(
+                                        data_augmentation_kwargs=None),
+                                    nb_io_workers=args.nb_io_workers,
+                                    nb_proc_workers=args.nb_proc_workers,
+                                    rng=np.random.RandomState(args.init_seed))}
     
     # Function to convert data to pytorch usable form.
     def prepare_batch(batch):

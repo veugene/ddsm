@@ -6,7 +6,7 @@ import numpy as np
 from data_tools.data_augmentation import image_random_transform
 from data_tools.wrap import multi_source_array
 
- 
+
 def prepare_data_ddsm(path, masked_fraction=0, drop_masked=False, rng=None):
     """
     Convenience function to prepare DDSM data split into training and
@@ -93,6 +93,144 @@ def prepare_data_ddsm(path, masked_fraction=0, drop_masked=False, rng=None):
             data[key]['h'] = multi_source_array([data[key]['h']]*m)
     return data
 
+
+def prepare_data_cbis(path, split_seed=0, rng=None, **kwargs):
+    # HACK supervised dataset for debugging
+    # HACK healthy is just sick, repeated
+    # HACK validation set is just the test set
+    # HACK kwargs is ignored
+    if rng is None:
+        rng = np.random.RandomState(0)
+    try:
+        h5py_file = h5py.File(path, mode='r')
+    except:
+        print("Failed to open data: {}".format(path))
+        raise
+    
+    data = OrderedDict([('train', OrderedDict()),
+                        ('valid', OrderedDict()),
+                        ('test',  OrderedDict())])
+    data['train']['h'] = h5py_file['train']['s']
+    data['train']['s'] = h5py_file['train']['s']
+    data['train']['m'] = h5py_file['train']['m']
+    data['valid']['h'] = h5py_file['test']['s']
+    data['valid']['s'] = h5py_file['test']['s']
+    data['valid']['m'] = h5py_file['test']['m']
+    data['test']['h']  = h5py_file['test']['s']
+    data['test']['s']  = h5py_file['test']['s']
+    data['test']['m']  = h5py_file['test']['m']
+    
+    return data
+
+
+from torch.utils.data import Dataset
+import SimpleITK as sitk
+from scipy import ndimage
+import os
+import cv2
+
+def get_largest_connected_component(m):
+    m_labeled, n_labels = ndimage.label(m)
+    sizes = ndimage.sum(m, m_labeled, index=range(1, n_labels+1))
+    label = np.argmax(sizes)+1
+    col, row = ndimage.find_objects(m_labeled==label)[0]
+    return col, row
+
+class png_dataset(Dataset):
+    def __init__(self, image_path, mask_path, da_kwargs):
+        super().__init__()
+        self.image_path = image_path
+        self.mask_path = mask_path
+        self.da_kwargs = da_kwargs
+        self._image_files = sorted(os.listdir(image_path))
+    
+    def __getitem__(self, idx):
+        img_fn = self._image_files[idx]
+        img = cv2.imread(os.path.join(self.image_path, img_fn),
+                         cv2.IMREAD_GRAYSCALE)
+        
+        # Crop to breast.
+        otsu = sitk.OtsuThresholdImageFilter()
+        otsu.SetInsideValue(0)
+        otsu.SetOutsideValue(1)
+        img_include_sitk = otsu.Execute(sitk.GetImageFromArray(img))
+        img_include = sitk.GetArrayFromImage(img_include_sitk)
+        
+        # Get the bounding box of the largest connected component.
+        col, row = get_largest_connected_component(img_include>0)
+        
+        # Crop.
+        #img_orig = img.copy()
+        crop_x = slice(col.start, max(col.stop, col.start+256))
+        crop_y = slice(row.start, max(row.stop, row.start+256))
+        img = img[crop_x, crop_y]
+        #print(img_fn, img_orig.shape, row, col)
+        
+        #img_orig = cv2.resize(src=img_orig, dsize=(256,256))
+        #img_include = cv2.resize(src=img_include, dsize=(256,256))
+        #from matplotlib import pyplot as plt
+        #fig, ax = plt.subplots(1, 3)
+        #ax[0].imshow(img_orig, cmap='gray')
+        #ax[1].imshow(img_include, cmap='gray')
+        #ax[2].imshow(img, cmap='gray')
+        #fig.savefig(os.path.join("debug_ddsm_png",
+                                 #os.path.basename(img_fn)+".png"))
+        #plt.close()
+        #exit()
+        
+        # Resize.
+        img = cv2.resize(src=img, dsize=(256, 256),
+                         interpolation=cv2.INTER_AREA)
+        img = (img - img.min()) / (img.max() - img.min() + 1.0e-10)
+        img = img[np.newaxis, :].astype(np.float32)
+        fn_root = img_fn.replace("_FULL___PRE.png", "")
+        mask_fn = fn_root+"_MASK___PRE.png"
+        if not os.path.exists(os.path.join(self.mask_path, mask_fn)):
+            mask_fn = fn_root+"_MASK_1___PRE.png"
+        if not os.path.exists(os.path.join(self.mask_path, mask_fn)):
+            mask_fn = fn_root+"_MASK_2___PRE.png"
+        if not os.path.exists(os.path.join(self.mask_path, mask_fn)):
+            mask_fn = fn_root+"_MASK_3___PRE.png"
+        if not os.path.exists(os.path.join(self.mask_path, mask_fn)):
+            mask_fn = fn_root+"_MASK_4___PRE.png"
+        mask = cv2.imread(os.path.join(self.mask_path, mask_fn),
+                          cv2.IMREAD_GRAYSCALE)
+        mask = mask[crop_x, crop_y]
+        mask = cv2.resize(src=mask, dsize=(256, 256),
+                          interpolation=cv2.INTER_NEAREST)
+        mask = mask.astype(float)/mask.max()
+        mask[mask<0.5] = 0
+        mask[mask>=0.5] = 1
+        mask = mask.astype(np.uint8)
+        mask = mask[np.newaxis, :]
+        
+        # Data augmentation
+        img, mask = image_random_transform(img, mask,
+                                           **self.da_kwargs,
+                                           n_warp_threads=1)
+        img = img.copy()
+        mask = mask.astype(np.uint8)
+        
+        return img, img, mask
+    
+    def __len__(self):
+        return len(self._image_files)
+
+
+def prepare_data_cbis_png(path, data_augmentation_kwargs):
+    # HACK supervised dataset for debugging
+    # HACK healthy is just sick, repeated
+    # HACK validation set is just the test set
+    data = {'train': png_dataset(os.path.join(path, "full", "train"),
+                                 os.path.join(path, "mask", "train"),
+                                 data_augmentation_kwargs),
+            'valid': png_dataset(os.path.join(path, "full", "test"),
+                                 os.path.join(path, "mask", "test"),
+                                 data_augmentation_kwargs),
+            'test' : png_dataset(os.path.join(path, "full", "test"),
+                                 os.path.join(path, "mask", "test"),
+                                 data_augmentation_kwargs)}
+    return data
 
 
 class _list(object):
