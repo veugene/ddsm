@@ -75,7 +75,7 @@ class experiment(object):
                 f.write('\n'.join(sys.argv))
             if args.weights_from is not None:
                 # Load weights from specified checkpoint.
-                self.load_model(load_from=args.weights_from)
+                self.load_model(args.weights_from)
             with open(os.path.join(args.path, "config.py"), 'w') as f:
                 f.write(self.model_as_str)
         
@@ -214,7 +214,7 @@ class experiment(object):
     def load_model(self, path):
         state_dict = torch.load(path)
         for key in state_dict:
-            if key.startswith('model_'):
+            if key.startswith('model_') and key != 'model_as_str':
                 m_key = key.replace('model_', '')
                 self.model[m_key].load_state_dict(state_dict[f'model_{m_key}'])
     
